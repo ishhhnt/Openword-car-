@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hellcat PRIME HD - ISHNT</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; touch-action: none; }
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100; color: white;
+        }
+        #ui { position: absolute; top: 20px; left: 20px; color: #fff; pointer-events: none; z-index: 10; }
+        #speed { font-size: 2.2rem; font-weight: bold; color: #00ff64; text-shadow: 0 0 10px rgba(0,255,100,0.5); }
+        #top-right-ui { position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+        .ui-btn { padding: 12px 18px; background: rgba(255, 255, 255, 0.1); border: 1px solid #fff; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; pointer-events: auto; }
+        #controls { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: space-between; padding: 0 30px; box-sizing: border-box; pointer-events: none; z-index: 10; }
+        .btn { width: 80px; height: 80px; background: rgba(255, 255, 255, 0.1); border: 2px solid #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; pointer-events: auto; user-select: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-screen">
+        <h1>SYNCING PRIME WORLD...</h1>
+        <p>MADE BY <span style="color:#ff0055">ISHNT</span></p>
+    </div>
+
+    <div id="ui">
+        <div id="speed">0 KM/H</div>
+        <div id="gear-info" style="color: #ff0055; font-weight: bold;">GEAR: 2</div>
+    </div>
+
+    <div id="top-right-ui">
+        <button class="ui-btn" id="cam-toggle">CAM VIEW</button>
+        <div style="display: flex; gap: 5px;">
+            <button class="ui-btn" id="gear-up">+</button>
+            <button class="ui-btn" id="gear-down">-</button>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div style="display: flex; gap: 20px;"><div id="left" class="btn">L</div><div id="right" class="btn">R</div></div>
+        <div style="display: flex; gap: 20px;"><div id="brake" class="btn">BRK</div><div id="gas" class="btn">GAS</div></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { Sky } from 'three/addons/objects/Sky.js';
+
+        let scene, camera, renderer, car;
+        let moveState = { forward: false, brake: false, left: false, right: false };
+        let velocity = 0, steeringAngle = 0, currentGear = 2; // STARTING IN 2nd GEAR
+        let camModes = ['normal', 'front', 'side', 'drone'], camIdx = 0;
+        let orbitLat = 0, orbitLon = 0, isOrbiting = false;
+        let onMouseDownMouseX = 0, onMouseDownMouseY = 0, onMouseDownLon = 0, onMouseDownLat = 0;
+
+        // SPEED DOUBLED (Prime Mode)
+        const gearLimits = { "-1": -0.5, "0": 0, "1": 0.4, "2": 0.8, "3": 1.2, "4": 1.6, "5": 2.2, "6": 3.0 };
+        const textures = [];
+        const allBannerMaterials = [];
+
+        init();
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 40000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            document.body.appendChild(renderer.domElement);
+
+            const sky = new Sky(); sky.scale.setScalar(450000); scene.add(sky);
+            const sunVec = new THREE.Vector3();
+            sunVec.setFromSphericalCoords(1, THREE.MathUtils.degToRad(85), THREE.MathUtils.degToRad(180));
+            sky.material.uniforms['sunPosition'].value.copy(sunVec);
+
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            scene.environment = pmrem.fromScene(scene).texture;
+
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshStandardMaterial({color: 0x1a1a1a, roughness: 0.1, metalness: 0.3}));
+            floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+            scene.add(new THREE.GridHelper(10000, 60, 0xff0055, 0x222222));
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 3);
+            sunLight.position.set(100, 200, 100); sunLight.castShadow = true;
+            sunLight.shadow.mapSize.set(2048, 2048);
+            scene.add(sunLight);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+
+            const texLoader = new THREE.TextureLoader();
+            ['1.png', '2.png', '3.png', '4.png', '5.png'].forEach(n => {
+                const t = texLoader.load('banner/' + n);
+                t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+                t.minFilter = THREE.LinearMipmapLinearFilter;
+                t.magFilter = THREE.LinearFilter;
+                t.colorSpace = THREE.SRGBColorSpace;
+                textures.push(t);
+            });
+
+            for(let i=0; i<45; i++) {
+                const group = new THREE.Group();
+                const type = i % 3;
+                const sharedMat = new THREE.MeshBasicMaterial({ map: textures[0], side: THREE.DoubleSide });
+                allBannerMaterials.push(sharedMat);
+
+                let bannerMesh;
+                if(type === 0) {
+                    bannerMesh = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 35, 32, 1, true), sharedMat);
+                    group.add(bannerMesh); group.position.y = 17.5;
+                } else if(type === 1) {
+                    bannerMesh = new THREE.Mesh(new THREE.BoxGeometry(20, 40, 20), [sharedMat, sharedMat, new THREE.MeshBasicMaterial({color:0x000}), new THREE.MeshBasicMaterial({color:0x000}), sharedMat, sharedMat]);
+                    group.add(bannerMesh); group.position.y = 20;
+                } else {
+                    bannerMesh = new THREE.Mesh(new THREE.BoxGeometry(45, 22, 22), [new THREE.MeshBasicMaterial({color:0x000}), new THREE.MeshBasicMaterial({color:0x000}), sharedMat, sharedMat, sharedMat, sharedMat]);
+                    const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 70), new THREE.MeshStandardMaterial({color:0x111111}));
+                    pole.position.y = -35; group.add(pole, bannerMesh); group.position.y = 70;
+                }
+                const side = i % 2 === 0 ? 1 : -1;
+                group.position.set(side * (75 + Math.random() * 50), group.position.y, (i * 150) - 2000);
+                group.rotation.y = Math.random() * 0.5;
+                scene.add(group);
+            }
+
+            setInterval(() => {
+                const nextTex = textures[Math.floor(Math.random() * textures.length)];
+                allBannerMaterials.forEach(m => m.map = nextTex);
+            }, 2000);
+
+            new GLTFLoader().load('https://raw.githack.com/ishhhnt/Model/main/dodge_challegner_srt_hellcat.glb', (gltf) => {
+                car = gltf.scene;
+                car.traverse(n => { if(n.isMesh) { n.castShadow = true; n.material.envMapIntensity = 4; }});
+                scene.add(car);
+                document.getElementById('loading-screen').style.display = 'none';
+                animate();
+            });
+
+            setupControls();
+        }
+
+        function setupControls() {
+            const set = (id, prop) => {
+                const el = document.getElementById(id);
+                el.onpointerdown = (e) => { e.stopPropagation(); moveState[prop] = true; isOrbiting = false; };
+                el.onpointerup = () => moveState[prop] = false;
+            };
+            set('left', 'left'); set('right', 'right'); set('gas', 'forward'); set('brake', 'brake');
+            document.getElementById('gear-up').onclick = () => { if(currentGear < 6) currentGear++; updateUI(); };
+            document.getElementById('gear-down').onclick = () => { if(currentGear > -1) currentGear--; updateUI(); };
+            document.getElementById('cam-toggle').onclick = () => { camIdx = (camIdx + 1) % camModes.length; };
+            
+            window.onpointerdown = (e) => { if(e.target.className.indexOf('btn') === -1) { isOrbiting = true; onMouseDownMouseX = e.clientX; onMouseDownMouseY = e.clientY; onMouseDownLon = orbitLon; onMouseDownLat = orbitLat; }};
+            window.onpointermove = (e) => { if(isOrbiting) { orbitLon = (onMouseDownMouseX - e.clientX) * 0.3 + onMouseDownLon; orbitLat = (e.clientY - onMouseDownMouseY) * 0.3 + onMouseDownLat; orbitLat = Math.max(-5, Math.min(60, orbitLat)); }};
+            window.onpointerup = () => isOrbiting = false;
+        }
+
+        function updateUI() { 
+            let g = currentGear === 0 ? "N" : (currentGear === -1 ? "R" : currentGear);
+            document.getElementById('gear-info').innerText = "GEAR: " + g; 
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (car) {
+                const limit = gearLimits[currentGear.toString()];
+                let targetSteer = moveState.left ? 0.035 : (moveState.right ? -0.035 : 0);
+                steeringAngle += (targetSteer - steeringAngle) * 0.12;
+                car.rotation.y += steeringAngle * (velocity * 2.2);
+
+                if (moveState.forward && currentGear !== 0) { 
+                    let dir = currentGear > 0 ? 1 : -1;
+                    if (Math.abs(velocity) < Math.abs(limit)) velocity += 0.01 * dir; // FASTER ACCEL
+                } else { velocity *= 0.985; }
+                if (moveState.brake) velocity *= 0.9;
+                
+                car.translateZ(velocity);
+                document.getElementById('speed').innerText = Math.floor(Math.abs(velocity) * 350) + " KM/H";
+
+                let tPos = new THREE.Vector3();
+                if(isOrbiting) {
+                    let phi = THREE.MathUtils.degToRad(90 - orbitLat), theta = THREE.MathUtils.degToRad(orbitLon);
+                    tPos.setFromSphericalCoords(15, phi, theta).add(car.position);
+                } else {
+                    let mode = camModes[camIdx];
+                    if(mode === 'normal') tPos.copy(car.position).add(new THREE.Vector3(0, 4, -13).applyQuaternion(car.quaternion));
+                    else if(mode === 'front') tPos.copy(car.position).add(new THREE.Vector3(0, 2, 15).applyQuaternion(car.quaternion));
+                    else if(mode === 'side') tPos.copy(car.position).add(new THREE.Vector3(20, 2, 0).applyQuaternion(car.quaternion));
+                    else tPos.set(car.position.x, 70, car.position.z - 50);
+                }
+                camera.position.lerp(tPos, 0.1);
+                camera.lookAt(car.position.x, car.position.y + 1, car.position.z);
+            }
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
