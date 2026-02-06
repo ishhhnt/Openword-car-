@@ -337,7 +337,7 @@
                 'https://raw.githack.com/ishhhnt/Model/main/dodge_challegner_srt_hellcat.glb', 
                 (gltf) => {
                     car = gltf.scene;
-                    car.position.set(0, 0, 0); // Start at center
+                    car.position.set(0, 1.5, 0); // Start at center, raised to road level
                     car.traverse(node => { 
                         if(node.isMesh) { 
                             node.castShadow = true;
@@ -471,10 +471,10 @@
             horizontalTexture.magFilter = THREE.LinearFilter;
             
             // Create city grid road layout
-            const roadWidth = 60;  // 2x thicker (was 30, now 60)
-            const blockSize = 100; // Distance between roads (city block size)
-            const gridSize = 8;    // Number of roads in each direction
-            const halfRoad = roadWidth / 2;
+            const roadWidth = 60;
+            const blockSize = 150; // Increased for more symmetrical grid spacing
+            const gridSize = 6;    // Reduced for cleaner grid
+            const roadHeight = 1.5; // Raised to prevent car from sinking and drone view overlap
             
             // Create horizontal roads (running along X axis) - using 2.png
             for(let i = -gridSize; i <= gridSize; i++) {
@@ -485,15 +485,14 @@
                     map: horizontalTexture,
                     roughness: 0.9,
                     metalness: 0.05,
-                    color: 0x888888 // Darker tone - removes white tint
+                    color: 0x888888
                 });
                 
-                // Reduced repeat to prevent blur and stretch
                 material.map.repeat.set(roadLength / 40, roadWidth / 40);
                 
                 const road = new THREE.Mesh(geometry, material);
-                road.rotation.x = -Math.PI / 2; // Lay flat on ground
-                road.position.set(0, 0.05, i * blockSize);
+                road.rotation.x = -Math.PI / 2;
+                road.position.set(0, roadHeight, i * blockSize);
                 road.receiveShadow = true;
                 
                 scene.add(road);
@@ -501,31 +500,26 @@
             }
             
             // Create vertical roads (running along Z axis) - using 1.png
-            // Split into segments to avoid intersection overlap
+            // Segmented to avoid overlapping with horizontal roads
             for(let i = -gridSize; i <= gridSize; i++) {
-                for(let j = -gridSize; j <= gridSize; j++) {
-                    // Skip the intersection areas (where horizontal roads are)
-                    const segmentStart = j * blockSize + halfRoad;
-                    const segmentEnd = (j + 1) * blockSize - halfRoad;
-                    const segmentLength = segmentEnd - segmentStart;
-                    
-                    if(segmentLength <= 0) continue;
-                    
+                for(let j = -gridSize; j < gridSize; j++) {
+                    // Create road segment between horizontal roads
+                    const segmentLength = blockSize - roadWidth;
                     const geometry = new THREE.PlaneGeometry(roadWidth, segmentLength);
                     
                     const material = new THREE.MeshStandardMaterial({
                         map: verticalTexture,
                         roughness: 0.9,
                         metalness: 0.05,
-                        color: 0x888888 // Darker tone - removes white tint
+                        color: 0x888888
                     });
                     
-                    // Reduced repeat to prevent blur and stretch
                     material.map.repeat.set(roadWidth / 40, segmentLength / 40);
                     
                     const road = new THREE.Mesh(geometry, material);
-                    road.rotation.x = -Math.PI / 2; // Lay flat on ground
-                    road.position.set(i * blockSize, 0.05, (segmentStart + segmentEnd) / 2);
+                    road.rotation.x = -Math.PI / 2;
+                    // Position segment in the middle of the block
+                    road.position.set(i * blockSize, roadHeight, j * blockSize + blockSize / 2);
                     road.receiveShadow = true;
                     
                     scene.add(road);
@@ -534,6 +528,49 @@
             }
             
             console.log('City grid road system created with', roads.length, 'road segments');
+            
+            // Add buildings in the gaps between roads
+            addBuildingsToGrid(blockSize, gridSize, roadWidth);
+        }
+
+        function addBuildingsToGrid(blockSize, gridSize, roadWidth) {
+            const loader = new GLTFLoader();
+            const halfRoad = roadWidth / 2;
+            
+            loader.load(
+                'b/1.png',
+                (gltf) => {
+                    const buildingModel = gltf.scene;
+                    
+                    // Get building dimensions
+                    const bbox = new THREE.Box3().setFromObject(buildingModel);
+                    const buildingHeight = bbox.max.y - bbox.min.y;
+                    const yOffset = -bbox.min.y;
+                    
+                    // Place buildings in each grid block (between roads)
+                    for(let i = -gridSize; i < gridSize; i++) {
+                        for(let j = -gridSize; j < gridSize; j++) {
+                            // Calculate position in the center of each block
+                            const x = i * blockSize + blockSize / 2;
+                            const z = j * blockSize + blockSize / 2;
+                            
+                            const building = buildingModel.clone();
+                            building.position.set(x, yOffset, z);
+                            building.rotation.y = Math.random() * Math.PI * 2; // Random rotation
+                            
+                            scene.add(building);
+                            houses.push(building);
+                        }
+                    }
+                    
+                    console.log('Buildings added to grid gaps');
+                },
+                undefined,
+                (error) => {
+                    console.error('Building load error:', error);
+                    console.log('Make sure b/1.png exists');
+                }
+            );
         }
 
         function setupControls() {
