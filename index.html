@@ -193,6 +193,9 @@
         // Billboard textures
         const textures = [];
         const allBannerMaterials = [];
+        
+        // Road system
+        let roads = [];
 
         init();
 
@@ -434,6 +437,9 @@
                 }
             );
 
+            // Create city grid road system
+            createRoadSystem();
+
             setupControls();
             window.addEventListener('resize', onWindowResize, false);
         }
@@ -444,6 +450,90 @@
                 document.getElementById('loading-screen').style.display = 'none';
                 if(car) animate();
             }
+        }
+
+        function createRoadSystem() {
+            const textureLoader = new THREE.TextureLoader();
+            
+            // Load both road textures
+            const verticalTexture = textureLoader.load('road/1.png');
+            const horizontalTexture = textureLoader.load('road/2.png');
+            
+            // Configure textures for proper tiling
+            verticalTexture.wrapS = THREE.RepeatWrapping;
+            verticalTexture.wrapT = THREE.RepeatWrapping;
+            verticalTexture.minFilter = THREE.LinearFilter;
+            verticalTexture.magFilter = THREE.LinearFilter;
+            
+            horizontalTexture.wrapS = THREE.RepeatWrapping;
+            horizontalTexture.wrapT = THREE.RepeatWrapping;
+            horizontalTexture.minFilter = THREE.LinearFilter;
+            horizontalTexture.magFilter = THREE.LinearFilter;
+            
+            // Create city grid road layout
+            const roadWidth = 60;  // 2x thicker (was 30, now 60)
+            const blockSize = 100; // Distance between roads (city block size)
+            const gridSize = 8;    // Number of roads in each direction
+            const halfRoad = roadWidth / 2;
+            
+            // Create horizontal roads (running along X axis) - using 2.png
+            for(let i = -gridSize; i <= gridSize; i++) {
+                const roadLength = blockSize * gridSize * 2;
+                const geometry = new THREE.PlaneGeometry(roadLength, roadWidth);
+                
+                const material = new THREE.MeshStandardMaterial({
+                    map: horizontalTexture,
+                    roughness: 0.9,
+                    metalness: 0.05,
+                    color: 0x888888 // Darker tone - removes white tint
+                });
+                
+                // Reduced repeat to prevent blur and stretch
+                material.map.repeat.set(roadLength / 40, roadWidth / 40);
+                
+                const road = new THREE.Mesh(geometry, material);
+                road.rotation.x = -Math.PI / 2; // Lay flat on ground
+                road.position.set(0, 0.05, i * blockSize);
+                road.receiveShadow = true;
+                
+                scene.add(road);
+                roads.push(road);
+            }
+            
+            // Create vertical roads (running along Z axis) - using 1.png
+            // Split into segments to avoid intersection overlap
+            for(let i = -gridSize; i <= gridSize; i++) {
+                for(let j = -gridSize; j <= gridSize; j++) {
+                    // Skip the intersection areas (where horizontal roads are)
+                    const segmentStart = j * blockSize + halfRoad;
+                    const segmentEnd = (j + 1) * blockSize - halfRoad;
+                    const segmentLength = segmentEnd - segmentStart;
+                    
+                    if(segmentLength <= 0) continue;
+                    
+                    const geometry = new THREE.PlaneGeometry(roadWidth, segmentLength);
+                    
+                    const material = new THREE.MeshStandardMaterial({
+                        map: verticalTexture,
+                        roughness: 0.9,
+                        metalness: 0.05,
+                        color: 0x888888 // Darker tone - removes white tint
+                    });
+                    
+                    // Reduced repeat to prevent blur and stretch
+                    material.map.repeat.set(roadWidth / 40, segmentLength / 40);
+                    
+                    const road = new THREE.Mesh(geometry, material);
+                    road.rotation.x = -Math.PI / 2; // Lay flat on ground
+                    road.position.set(i * blockSize, 0.05, (segmentStart + segmentEnd) / 2);
+                    road.receiveShadow = true;
+                    
+                    scene.add(road);
+                    roads.push(road);
+                }
+            }
+            
+            console.log('City grid road system created with', roads.length, 'road segments');
         }
 
         function setupControls() {
