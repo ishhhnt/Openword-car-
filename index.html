@@ -534,46 +534,65 @@
         }
 
         function addBuildingsToGrid(blockSize, gridSize, roadWidth) {
-            const loader = new GLTFLoader();
-            const halfRoad = roadWidth / 2;
+            const textureLoader = new THREE.TextureLoader();
+            const buildingTextures = [];
             
-            loader.load(
-                'b/1.png',
-                (gltf) => {
-                    const buildingModel = gltf.scene;
+            // Load all 5 building textures
+            for(let i = 1; i <= 5; i++) {
+                const texture = textureLoader.load('b/' + i + '.png');
+                texture.minFilter = THREE.LinearFilter;
+                texture.magFilter = THREE.LinearFilter;
+                buildingTextures.push(texture);
+            }
+            
+            // Building dimensions - cube to fill gap
+            const buildingWidth = 85;   // Almost fills 90-unit gap
+            const buildingDepth = 85;   // Same as width (cube)
+            const buildingHeight = 45;  // 3-story building height
+            
+            // Place buildings in each grid block
+            for(let i = -gridSize; i < gridSize; i++) {
+                for(let j = -gridSize; j < gridSize; j++) {
+                    // Skip some buildings randomly for better FPS
+                    if(Math.random() > 0.6) continue; // Only place 60% of buildings
                     
-                    // Get building dimensions
-                    const bbox = new THREE.Box3().setFromObject(buildingModel);
-                    const buildingHeight = bbox.max.y - bbox.min.y;
-                    const yOffset = -bbox.min.y;
+                    // Select 4 random textures for the 4 sides
+                    const frontTexture = buildingTextures[Math.floor(Math.random() * buildingTextures.length)];
+                    const backTexture = buildingTextures[Math.floor(Math.random() * buildingTextures.length)];
+                    const leftTexture = buildingTextures[Math.floor(Math.random() * buildingTextures.length)];
+                    const rightTexture = buildingTextures[Math.floor(Math.random() * buildingTextures.length)];
                     
-                    // Place buildings in each grid block (reduced for performance)
-                    for(let i = -gridSize; i < gridSize; i++) {
-                        for(let j = -gridSize; j < gridSize; j++) {
-                            // Skip some buildings randomly for better FPS
-                            if(Math.random() > 0.6) continue; // Only place 60% of buildings
-                            
-                            // Calculate position in the center of each block
-                            const x = i * blockSize + blockSize / 2;
-                            const z = j * blockSize + blockSize / 2;
-                            
-                            const building = buildingModel.clone();
-                            building.position.set(x, yOffset, z);
-                            building.rotation.y = Math.random() * Math.PI * 2; // Random rotation
-                            
-                            scene.add(building);
-                            houses.push(building);
-                        }
-                    }
+                    // Create materials for each face of the cube
+                    // Order: right(+X), left(-X), top(+Y), bottom(-Y), front(+Z), back(-Z)
+                    const materials = [
+                        new THREE.MeshStandardMaterial({ map: rightTexture }), // Right side
+                        new THREE.MeshStandardMaterial({ map: leftTexture }),  // Left side
+                        new THREE.MeshStandardMaterial({ color: 0x333333 }),   // Top (roof - dark)
+                        new THREE.MeshStandardMaterial({ color: 0x1a1a1a }),   // Bottom (not visible)
+                        new THREE.MeshStandardMaterial({ map: frontTexture }), // Front
+                        new THREE.MeshStandardMaterial({ map: backTexture })   // Back
+                    ];
                     
-                    console.log('Buildings added to grid gaps');
-                },
-                undefined,
-                (error) => {
-                    console.error('Building load error:', error);
-                    console.log('Make sure b/1.png exists');
+                    // Create box geometry (cube building)
+                    const geometry = new THREE.BoxGeometry(buildingWidth, buildingHeight, buildingDepth);
+                    const building = new THREE.Mesh(geometry, materials);
+                    
+                    // Calculate position in the center of each block
+                    const x = i * blockSize + blockSize / 2;
+                    const z = j * blockSize + blockSize / 2;
+                    
+                    // Position building (standing on road level)
+                    building.position.set(x, buildingHeight / 2 + 1.5, z); // Half height + road level
+                    
+                    building.castShadow = true;
+                    building.receiveShadow = true;
+                    
+                    scene.add(building);
+                    houses.push(building);
                 }
-            );
+            }
+            
+            console.log('Cube buildings added to grid gaps:', houses.length, 'buildings');
         }
 
         function setupControls() {
