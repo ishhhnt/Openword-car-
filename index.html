@@ -229,8 +229,8 @@
             const pmrem = new THREE.PMREMGenerator(renderer);
             scene.environment = pmrem.fromScene(scene).texture;
 
-            // Original size floor
-            const floorGeo = new THREE.PlaneGeometry(30000, 30000);
+            // Original size floor (50% reduced for performance)
+            const floorGeo = new THREE.PlaneGeometry(15000, 15000);
             const floorMat = new THREE.MeshStandardMaterial({
                 color: 0x1a1a1a, 
                 roughness: 0.1, 
@@ -241,20 +241,20 @@
             floor.receiveShadow = true;
             scene.add(floor);
             
-            // Grid
-            scene.add(new THREE.GridHelper(10000, 60, 0xff0055, 0x222222));
+            // Grid (50% reduced)
+            scene.add(new THREE.GridHelper(5000, 40, 0xff0055, 0x222222));
 
-            // Lighting with shadows
+            // Lighting with optimized shadows for 60 FPS
             const sunLight = new THREE.DirectionalLight(0xffffff, 3);
             sunLight.position.set(100, 200, 100);
             sunLight.castShadow = true;
-            sunLight.shadow.mapSize.set(2048, 2048);
+            sunLight.shadow.mapSize.set(1024, 1024); // Reduced from 2048 for FPS
             sunLight.shadow.camera.near = 0.5;
             sunLight.shadow.camera.far = 500;
-            sunLight.shadow.camera.left = -200;
-            sunLight.shadow.camera.right = 200;
-            sunLight.shadow.camera.top = 200;
-            sunLight.shadow.camera.bottom = -200;
+            sunLight.shadow.camera.left = -150;  // Reduced from 200
+            sunLight.shadow.camera.right = 150;
+            sunLight.shadow.camera.top = 150;
+            sunLight.shadow.camera.bottom = -150;
             scene.add(sunLight);
             
             scene.add(new THREE.AmbientLight(0xffffff, 0.8));
@@ -270,8 +270,8 @@
                 textures.push(t);
             });
 
-            // Create LESS billboards - only 15 (reduced from 45)
-            for(let i = 0; i < 15; i++) {
+            // Create LESS billboards - only 10 (optimized for 60 FPS)
+            for(let i = 0; i < 10; i++) {
                 const group = new THREE.Group();
                 const type = i % 3;
                 const sharedMat = new THREE.MeshBasicMaterial({ 
@@ -470,11 +470,11 @@
             horizontalTexture.minFilter = THREE.LinearFilter;
             horizontalTexture.magFilter = THREE.LinearFilter;
             
-            // Create city grid road layout
+            // Create city grid road layout (optimized for 100 roads)
             const roadWidth = 60;
-            const blockSize = 150; // Increased for more symmetrical grid spacing
-            const gridSize = 6;    // Reduced for cleaner grid
-            const roadHeight = 1.5; // Raised to prevent car from sinking and drone view overlap
+            const blockSize = 150;
+            const gridSize = 4;    // Reduced from 6 to 4 for ~100 roads (was 169)
+            const roadHeight = 1.5;
             
             // Create horizontal roads (running along X axis) - using 2.png
             for(let i = -gridSize; i <= gridSize; i++) {
@@ -547,9 +547,12 @@
                     const buildingHeight = bbox.max.y - bbox.min.y;
                     const yOffset = -bbox.min.y;
                     
-                    // Place buildings in each grid block (between roads)
+                    // Place buildings in each grid block (reduced for performance)
                     for(let i = -gridSize; i < gridSize; i++) {
                         for(let j = -gridSize; j < gridSize; j++) {
+                            // Skip some buildings randomly for better FPS
+                            if(Math.random() > 0.6) continue; // Only place 60% of buildings
+                            
                             // Calculate position in the center of each block
                             const x = i * blockSize + blockSize / 2;
                             const z = j * blockSize + blockSize / 2;
